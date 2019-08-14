@@ -264,7 +264,7 @@ void Adafruit_Si4713::beginRDS(uint16_t programID) {
 
   setProperty(SI4713_PROP_TX_RDS_MESSAGE_COUNT, 1);
   setProperty(SI4713_PROP_TX_RDS_PS_AF, 0xE0E0); // no AF
-  setProperty(SI4713_PROP_TX_RDS_FIFO_SIZE, 0);
+  setProperty(SI4713_PROP_TX_RDS_FIFO_SIZE, 5);
 
   setProperty(SI4713_PROP_TX_COMPONENT_ENABLE, 0x0007);
 }
@@ -300,11 +300,12 @@ void Adafruit_Si4713::setRDSstation(char *s) {
  */
 void Adafruit_Si4713::setRDSbuffer(char *s) {
   uint8_t i, len = strlen(s);
-  uint8_t slots = (len + 3) / 4;
+  uint8_t slots = min(8, (len + 3) / 4); // allow maximum 32 characters
+  bool shouldTerm = false;
   char slot[5];
 
-  for (uint8_t i = 0; i < slots; i++) {
-    memset(_i2ccommand, ' ', 8); // clear it with ' '
+  for (i = 0; i < slots; i++) {
+    memset(_i2ccommand, 0x0D, 8); // clear it with 0x0D
     memcpy(_i2ccommand + 4, s, min(4, (int)strlen(s)));
     s += 4;
     _i2ccommand[8] = 0;
@@ -319,7 +320,27 @@ void Adafruit_Si4713::setRDSbuffer(char *s) {
 
     _i2ccommand[2] = 0x20;
     _i2ccommand[3] = i;
+
+    if (i >= 7) {
+        _i2ccommand[7] = 0x0D;
+        sendCommand(8);
+        break;
+    }
+
+    if (i >= slots - 1 && _i2ccommand[7] != 0x0D) {
+        shouldTerm = true;
+    }
+
     sendCommand(8);
+  }
+
+  if (shouldTerm) {
+      memset(_i2ccommand, 0x0D, 8); // clear it with 0x0D
+      _i2ccommand[0] = SI4710_CMD_TX_RDS_BUFF; // 0x35
+      _i2ccommand[1] = 0x04;
+      _i2ccommand[2] = 0b00100000;
+      _i2ccommand[3] = i;
+      sendCommand(8);
   }
 
   /*
